@@ -269,7 +269,13 @@ async def test_screenshot_uses_prepared_copy_but_sends_original_media(
         assert options
         return str(tmp_path / "card.png")
 
-    async def append_media(_chain, images, _videos, context_label="推文"):
+    async def append_media(
+        _chain,
+        images,
+        _videos,
+        context_label="推文",
+        platform_name="",
+    ):
         captured_media.append((context_label, list(images)))
 
     service = plugin_module.TweetMessageService(
@@ -328,6 +334,121 @@ async def test_pre_download_failure_falls_back_to_remote_url(plugin_module):
     image_url = "https://example.com/image.jpg"
 
     component = await service.build_image_component(image_url)
+
+    assert isinstance(component, Image)
+    assert component.file == image_url
+
+
+@pytest.mark.asyncio
+async def test_qq_official_image_pre_downloads_without_proxy(plugin_module):
+    image_bytes = b"downloaded-image"
+
+    class TwitterAPI:
+        async def download_media(self, url):
+            assert url == "https://example.com/image.jpg"
+            return image_bytes
+
+    service = plugin_module.TweetMessageService(
+        object(),
+        TwitterAPI(),
+        None,
+        _message_settings(
+            plugin_module,
+            pre_download_media=False,
+            proxy=None,
+        ),
+    )
+    component = await service.build_image_component(
+        "https://example.com/image.jpg",
+        platform_name="qq_official",
+    )
+
+    assert isinstance(component, Image)
+    assert component.data == image_bytes
+
+
+@pytest.mark.asyncio
+async def test_qq_official_image_pre_download_retries(plugin_module):
+    class TwitterAPI:
+        def __init__(self):
+            self.calls = 0
+
+        async def download_media(self, _url):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("truncated response")
+            return b"downloaded-image"
+
+    twitter_api = TwitterAPI()
+    service = plugin_module.TweetMessageService(
+        object(),
+        twitter_api,
+        None,
+        _message_settings(
+            plugin_module,
+            pre_download_media=False,
+            proxy=None,
+        ),
+    )
+    component = await service.build_image_component(
+        "https://example.com/image.jpg",
+        platform_name="qq_official",
+    )
+
+    assert twitter_api.calls == 2
+    assert isinstance(component, Image)
+    assert component.data == b"downloaded-image"
+
+
+@pytest.mark.asyncio
+async def test_qq_official_pre_download_gives_up_to_remote_url(plugin_module):
+    class TwitterAPI:
+        def __init__(self):
+            self.calls = 0
+
+        async def download_media(self, _url):
+            self.calls += 1
+            raise RuntimeError("mirror unreachable")
+
+    twitter_api = TwitterAPI()
+    service = plugin_module.TweetMessageService(
+        object(),
+        twitter_api,
+        None,
+        _message_settings(
+            plugin_module,
+            pre_download_media=False,
+            proxy=None,
+        ),
+    )
+    image_url = "https://example.com/image.jpg"
+    component = await service.build_image_component(
+        image_url,
+        platform_name="qq_official",
+    )
+
+    assert twitter_api.calls == 2
+    assert isinstance(component, Image)
+    assert component.file == image_url
+
+
+@pytest.mark.asyncio
+async def test_non_qq_platform_without_proxy_keeps_remote_url(plugin_module):
+    service = plugin_module.TweetMessageService(
+        object(),
+        object(),
+        None,
+        _message_settings(
+            plugin_module,
+            pre_download_media=False,
+            proxy=None,
+        ),
+    )
+    image_url = "https://example.com/image.jpg"
+    component = await service.build_image_component(
+        image_url,
+        platform_name="aiocqhttp",
+    )
 
     assert isinstance(component, Image)
     assert component.file == image_url

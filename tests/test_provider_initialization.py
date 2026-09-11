@@ -990,11 +990,12 @@ async def test_test_command_and_link_recognition_share_prepared_delivery(
         def __init__(self):
             self.prepare_calls = 0
 
-        def prepare_event_delivery(self, _chain, _nickname):
+        def prepare_event_delivery(self, _chain, _nickname, _platform_name=""):
             self.prepare_calls += 1
             return types.SimpleNamespace(
                 primary_chain=[Plain("prepared")],
                 videos=[],
+                media_chains=[],
             )
 
         async def send_prepared_videos(self, _umo, _videos):
@@ -1017,6 +1018,10 @@ async def test_test_command_and_link_recognition_share_prepared_delivery(
         @staticmethod
         def chain_result(chain):
             return chain
+
+        @staticmethod
+        def get_platform_name():
+            return "aiocqhttp"
 
     plugin.twitter_api = API()
     plugin.message_service = Messages()

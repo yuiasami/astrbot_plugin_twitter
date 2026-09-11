@@ -17,6 +17,12 @@ from ..twitter_renderer import (
 from .avatar_cache_service import AvatarCacheService
 
 
+# 这些适配器不把远程图片 URL 直接交给平台，而是由其内部下载器转码上传
+# （无重试），连接不稳时可能截断整个响应，导致整条消息发送失败。
+# 对它们，插件在构建消息链时直接把图片预下载为内联字节，绕开适配器下载链路。
+LOCAL_MEDIA_DOWNLOAD_PLATFORMS = frozenset({"qq_official", "qq_official_webhook"})
+
+
 HtmlRender = Callable[..., Awaitable[str]]
 
 
@@ -148,6 +154,7 @@ class TweetMessageService:
         images: list,
         videos: list,
         context_label: str = "推文",
+        platform_name: str = "",
     ) -> None:
         """把图片和视频追加到消息链，供主贴和引用帖复用。"""
         if not self.settings.send_media_separately:
@@ -155,7 +162,10 @@ class TweetMessageService:
 
         for img_url in images:
             try:
-                img_comp = await self.build_image_component(str(img_url))
+                img_comp = await self.build_image_component(
+                    str(img_url),
+                    platform_name=platform_name,
+                )
                 if img_comp is not None:
                     chain.append(img_comp)
             except Exception as exc:
@@ -187,27 +197,45 @@ class TweetMessageService:
                 )
                 chain.append(Comp.Plain(str(f"\n视频: {video_url}")))
 
-    async def build_image_component(self, img_url: str) -> Comp.Image | None:
-        """根据代理配置选择合适的图片组件构建方式。"""
+    async def build_image_component(
+        self,
+        img_url: str,
+        platform_name: str = "",
+    ) -> Comp.Image | None:
+        """根据代理与目标平台选择合适的图片组件构建方式。
+
+        需要预下载时优先返回内联字节（base64），目标平台内部下载器
+        只处理远程 URL 时，避免其无重试下载被截断导致整条消息失败。
+        """
         img_url = str(img_url or "").strip()
         if not img_url:
             return None
 
+        needs_local_bytes = (
+            str(platform_name or "").strip().lower()
+            in LOCAL_MEDIA_DOWNLOAD_PLATFORMS
+        )
         if not (
-            self.settings.pre_download_media
-            and self.settings.proxy
+            (self.settings.pre_download_media and self.settings.proxy)
+            or needs_local_bytes
         ):
             return Comp.Image.fromURL(img_url)
 
-        try:
-            data = await self.twitter_api.download_media(img_url)
-        except Exception as exc:
-            logger.warning(
-                f"通过代理下载图片失败 {img_url}: {exc}，回退为远程 URL"
-            )
-            return Comp.Image.fromURL(img_url)
+        last_exc: Exception | None = None
+        for attempt in range(2):
+            try:
+                data = await self.twitter_api.download_media(img_url)
+                return Comp.Image.fromBytes(data)
+            except Exception as exc:
+                last_exc = exc
+                logger.warning(
+                    f"预下载图片失败（第 {attempt + 1}/2 次）{img_url}: {exc}"
+                )
 
-        return Comp.Image.fromBytes(data)
+        logger.warning(
+            f"预下载图片失败，回退为远程 URL: {img_url}: {last_exc}"
+        )
+        return Comp.Image.fromURL(img_url)
 
     async def maybe_translate(
         self,
@@ -385,6 +413,7 @@ class TweetMessageService:
         sub_config: dict | None = None,
         translated_text: str | None = None,
         translate_model: str | None = None,
+        platform_name: str = "",
     ) -> list:
         """构建纯文本模式下的推文消息链。"""
         if sub_config is None:
@@ -458,6 +487,7 @@ class TweetMessageService:
                 quote.get("images") or [],
                 quote.get("videos") or [],
                 context_label="引用推文",
+                platform_name=platform_name,
             )
 
         await self.append_media_components(
@@ -465,6 +495,7 @@ class TweetMessageService:
             images,
             tweet_info.get("videos") or [],
             context_label="推文",
+            platform_name=platform_name,
         )
 
         return [component for component in chain if component is not None]
@@ -512,6 +543,7 @@ class TweetMessageService:
         sub_config: dict | None = None,
         translated_text: str | None = None,
         translate_model: str | None = None,
+        platform_name: str = "",
     ) -> list:
         """按当前文本渲染模式构建推文消息链。"""
         if self.settings.text_render_mode != "screenshot":
@@ -521,6 +553,7 @@ class TweetMessageService:
                 sub_config,
                 translated_text=translated_text,
                 translate_model=translate_model,
+                platform_name=platform_name,
             )
 
         try:
@@ -530,6 +563,7 @@ class TweetMessageService:
                 sub_config,
                 translated_text=translated_text,
                 translate_model=translate_model,
+                platform_name=platform_name,
             )
         except Exception as exc:
             logger.warning(f"推文截图渲染失败，已回退为文本消息: {exc}")
@@ -539,6 +573,7 @@ class TweetMessageService:
                 sub_config,
                 translated_text=translated_text,
                 translate_model=translate_model,
+                platform_name=platform_name,
             )
 
     async def build_screenshot_tweet_chain(
@@ -548,6 +583,7 @@ class TweetMessageService:
         sub_config: dict | None = None,
         translated_text: str | None = None,
         translate_model: str | None = None,
+        platform_name: str = "",
     ) -> list:
         """构建正文以 X 风格卡片截图展示的消息链。"""
         if sub_config is None:
@@ -590,6 +626,7 @@ class TweetMessageService:
                 quote.get("images") or [],
                 quote.get("videos") or [],
                 context_label="引用推文",
+                platform_name=platform_name,
             )
 
         await self.append_media_components(
@@ -597,6 +634,7 @@ class TweetMessageService:
             tweet_info.get("images") or [],
             tweet_info.get("videos") or [],
             context_label="推文",
+            platform_name=platform_name,
         )
 
         return [component for component in chain if component is not None]

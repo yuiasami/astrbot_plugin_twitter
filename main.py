@@ -436,6 +436,16 @@ class TwitterPlugin(Star):
                 "请同时开启「使用合并转发消息」配置项。"
             )
 
+        if self.use_node:
+            unsupported_platforms = (
+                self.delivery_service.unsupported_node_platforms()
+            )
+            if unsupported_platforms:
+                logger.warning(
+                    "以下平台不支持合并转发消息，对应会话将自动降级为"
+                    "普通消息发送: " + "、".join(unsupported_platforms)
+                )
+
         if self.data_provider == DATA_PROVIDER_FXTWITTER:
             logger.info("当前使用 Twitter 数据源: FxTwitter API")
             await self._refresh_fxtwitter_availability()
@@ -958,6 +968,7 @@ class TwitterPlugin(Star):
             tweet_info,
             translated_text=translated_text,
             translate_model=translate_model,
+            platform_name=event.get_platform_name(),
         )
         if not chain:
             yield event.plain_result(f"未找到 @{username} 的推文内容")
@@ -974,9 +985,13 @@ class TwitterPlugin(Star):
         prepared = self.delivery_service.prepare_event_delivery(
             chain,
             nickname,
+            event.get_platform_name(),
         )
-        if prepared.primary_chain:
-            yield event.chain_result(prepared.primary_chain)
+        if prepared.primary_chain or prepared.media_chains:
+            if prepared.primary_chain:
+                yield event.chain_result(prepared.primary_chain)
+            for media_chain in prepared.media_chains:
+                yield event.chain_result(media_chain)
         else:
             yield event.plain_result(f"未找到 @{username} 的推文内容")
         await self.delivery_service.send_prepared_videos(
@@ -1015,6 +1030,7 @@ class TwitterPlugin(Star):
                 {"r18": True, "media": False, "status": True},
                 translated_text=translated_text,
                 translate_model=translate_model,
+                platform_name=event.get_platform_name(),
             )
             if not chain:
                 if report_errors:
@@ -1032,9 +1048,13 @@ class TwitterPlugin(Star):
             prepared = self.delivery_service.prepare_event_delivery(
                 chain,
                 nickname,
+                event.get_platform_name(),
             )
-            if prepared.primary_chain:
-                yield event.chain_result(prepared.primary_chain)
+            if prepared.primary_chain or prepared.media_chains:
+                if prepared.primary_chain:
+                    yield event.chain_result(prepared.primary_chain)
+                for media_chain in prepared.media_chains:
+                    yield event.chain_result(media_chain)
             elif report_errors and not prepared.videos:
                 yield event.plain_result("未找到可发送的推文内容")
             await self.delivery_service.send_prepared_videos(

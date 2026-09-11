@@ -15,8 +15,9 @@ import httpx
 from bs4 import BeautifulSoup, Tag
 from astrbot.api import logger
 
-# 内置 Nitter 镜像站列表
+# 内置 Nitter 镜像站列表，按可用性排序，检测到第一个可用镜像即返回
 WEBSITE_LIST = [
+    "https://nitter.fuyuyuki.top",
     "https://nitter.net",
 ]
 
@@ -45,8 +46,8 @@ NITTER_REQUEST_HEADERS = {
 }
 FXTWITTER_REQUEST_HEADERS = {
     "User-Agent": (
-        "AstrBot-Twitter-Plugin/1.8 "
-        "(+https://github.com/Ars1027/astrbot_plugin_twitter)"
+        "AstrBot-Twitter-Plugin/1.12 "
+        "(+https://github.com/yuiasami/astrbot_plugin_twitter)"
     ),
     "Accept": "application/json",
     "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",

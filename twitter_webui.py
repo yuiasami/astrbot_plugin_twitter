@@ -114,6 +114,17 @@ class TwitterWebUIController:
             instances = get_insts() if callable(get_insts) else []
         return list(instances or [])
 
+    def _find_platform(self, platform_id: str) -> Any | None:
+        """按平台实例 ID 查找已加载的平台适配器。"""
+        for platform in self._platform_instances():
+            try:
+                meta = platform.meta()
+            except Exception:
+                continue
+            if self._meta_value(meta, "id") == platform_id:
+                return platform
+        return None
+
     def _aiocqhttp_platforms(self) -> list[Any]:
         result = []
         for platform in self._platform_instances():
@@ -331,16 +342,17 @@ class TwitterWebUIController:
         if message_type != "GroupMessage":
             return "只能为群聊新增订阅", 400
 
-        platform = next(
-            (
-                item
-                for item in self._aiocqhttp_platforms()
-                if self._meta_value(item.meta(), "id") == platform_id
-            ),
-            None,
-        )
+        platform = self._find_platform(platform_id)
         if platform is None:
-            return "未找到对应的 aiocqhttp 平台实例", 400
+            return "未找到对应的平台实例", 400
+        if (
+            self._meta_value(platform.meta(), "name").casefold()
+            != "aiocqhttp"
+        ):
+            return (
+                "这个平台无法获取群列表，请在群内使用 /推特关注 指令新增订阅",
+                400,
+            )
 
         source = await self._fetch_platform_groups(platform)
         if not source["available"]:

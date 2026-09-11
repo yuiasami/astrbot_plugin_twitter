@@ -1,7 +1,7 @@
 <div align="center">
 
 
-<img src="https://github.com/Ars1027/astrbot_plugin_twitter/blob/master/logo.png" width="256" alt="icon">
+<img src="https://github.com/yuiasami/astrbot_plugin_twitter/blob/master/logo.png" width="256" alt="icon">
 
 # Twitter 推文转发插件
 
@@ -12,6 +12,18 @@
 _✨ 支持 Nitter 与 FxTwitter API 双数据源的 Twitter 推文转发插件，提供 Dashboard 订阅管理、多会话独立订阅、定时推送、链接识别、合并转发与推文翻译。 ✨_
 
 </div>
+
+---
+
+## 平台支持
+
+- **aiocqhttp**（OneBot / NapCat / Lagrange 等）：完整支持合并转发、群列表展示与 Dashboard 直接新增订阅。
+- **QQ 官方机器人（qq_official）**：支持订阅、定时推送、链接识别、翻译、截图与媒体发送。受平台接口限制有几点差异：
+  - **合并转发自动降级**：QQ 官方机器人不支持合并转发消息，插件会自动改用普通消息发送，不会丢失推文。
+  - **图片自动预下载**：QQ 官方机器人必须把图片字节上传到 QQ 服务器，插件会先自行下载图片（失败自动重试一次），避免平台内部下载链路不稳导致整条消息发送失败；网络受限时可配合 `twitter_proxy` 使用。
+  - **文字优先发送**：QQ 官方机器人把「文字+图片」合并成一条富媒体消息时会把图片渲染在文字上方，插件会自动拆成「先文字、后图片」的多条消息，保证图片出现在文字内容之后。
+  - **@机器人 才能触发**：群聊中机器人默认只接收 @它的消息，自动链接识别与指令都需要 @机器人 才会生效；主动推送不受影响。
+  - **Dashboard 新增订阅受限**：QQ 官方机器人没有获取群列表的接口，Dashboard 无法为新群新增订阅，请在群内使用 `/推特关注` 指令。
 
 ---
 
@@ -234,7 +246,7 @@ FxTwitter 时间线使用有限 cursor 分页并在本地按推文 ID 去重、�
 ## 关于本项目
 
 > [!IMPORTANT]
-> 本项目代码由 ~~GLM-5.1~~ **codex** 辅助生成与迭代，可能存在遗留问题或未知的 Bug。如遇到任何异常，欢迎提交 [Issue](https://github.com/Ars1027/astrbot_plugin_twitter/issues) 反馈。
+> 本项目代码由 ~~GLM-5.1~~ **codex** 辅助生成与迭代，可能存在遗留问题或未知的 Bug。如遇到任何异常，欢迎提交 [Issue](https://github.com/yuiasami/astrbot_plugin_twitter/issues) 反馈。
 
 ---
 
